@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <title>Data Labeling Tool</title>
+    <style>
+        :root {
+            --border-color: #ddd;
+            --panel-bg: #ffffff;
+            --body-bg: #f4f4f9;
+            --text-color: #333;
+            --accent-color: #007bff;
+            --notsure-color: #6c757d;
+            --ok-color: #ffc107;
+            --bad-color: #dc3545;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: var(--body-bg);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .container {
+            width: 100%;
+            max-width: 1200px;
+        }
+        header {
+            width: 100%;
+            padding: 15px;
+            background-color: var(--panel-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        h1, h2, h3 {
+            margin-top: 0;
+            color: #333;
+        }
+        .main-content {
+            display: flex;
+            gap: 20px;
+            width: 100%;
+        }
+        .panel {
+            background-color: var(--panel-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        .left-panel {
+            flex: 1;
+        }
+        .right-panel {
+            flex: 1;
+        }
+        .info-block {
+            margin-bottom: 20px;
+        }
+        .info-block h3 {
+            border-bottom: 2px solid var(--accent-color);
+            padding-bottom: 8px;
+            margin-bottom: 12px;
+            font-size: 1.1em;
+        }
+        #answer-en {
+            background-color: #e9f5ff;
+            padding: 10px;
+            border-left: 4px solid var(--accent-color);
+            font-weight: bold;
+        }
+        ul, #clue-urls {
+            padding-left: 20px;
+            list-style-type: disc;
+        }
+        ul li, #clue-urls a {
+            margin-bottom: 8px;
+        }
+        .model-answer-item {
+            border: 1px solid #eee;
+            border-radius: 5px;
+            padding: 10px;
+            margin-bottom: 10px;
+            background-color: #fafafa;
+        }
+        .model-answer-item pre {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            background: #f0f0f0;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .controls, .judgment-area, .save-area {
+            margin-top: 20px;
+            padding: 15px;
+            text-align: center;
+            background-color: var(--panel-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+        }
+        .judgment-area {
+            margin-top: 0;
+            margin-bottom: 20px;
+        }
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1em;
+            margin: 5px;
+            transition: transform 0.1s;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            opacity: 0.9;
+        }
+        button:disabled {
+            cursor: not-allowed;
+            background-color: #ccc;
+        }
+        #prevBtn, #nextBtn { background-color: var(--accent-color); color: white; }
+        #saveBtn { background-color: #5a6268; color: white; }
+        .judgment-btn.notsure { background-color: var(--notsure-color); color: white; }
+        .judgment-btn.ok { background-color: var(--ok-color); color: #333; }
+        .judgment-btn.bad { background-color: var(--bad-color); color: white; }
+        .labeled {
+             border: 3px solid var(--accent-color);
+             transform: translateY(-2px);
+             box-shadow: 0 0 10px rgba(0, 123, 255, 0.5);
+        }
+        #item-counter {
+            font-size: 1.2em;
+            font-weight: bold;
+            display: inline-block;
+            width: 100px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <header>
+            <h1>Data Labeling Interface</h1>
+            <input type="file" id="jsonFile" accept=".json">
+        </header>
+
+        <div id="labeling-section" style="display: none;">
+            <div class="controls">
+                <button id="prevBtn" disabled>Previous</button>
+                <span id="item-counter">0 / 0</span>
+                <button id="nextBtn" disabled>Next</button>
+            </div>
+            
+            <div class="judgment-area">
+                
+                <button class="judgment-btn ok" data-judgment="Good">👌 答案正确且感觉唯一</button>
+                <button class="judgment-btn notsure" data-judgment="Not Sure">🤔 Not Sure</button>
+                <button class="judgment-btn bad" data-judgment="Bad">👎 Bad</button>
+            </div>
+
+            <div class="main-content">
+                <div class="panel left-panel">
+                    <div class="info-block">
+                        <h3>Subject</h3>
+                        <p id="subject"></p>
+                    </div>
+                    <div class="info-block">
+                        <h3>Question (English)</h3>
+                        <p id="question-en"></p>
+                    </div>
+                    <div class="info-block">
+                        <h3>Answer (English)</h3>
+                        <p id="answer-en"></p>
+                    </div>
+                     <div class="info-block">
+                        <h3>Traces</h3>
+                        <ul id="traces"></ul>
+                    </div>
+                </div>
+                <div class="panel right-panel">
+                    <div class="info-block">
+                        <h3>Clue URLs</h3>
+                        <div id="clue-urls"></div>
+                    </div>
+                    <div class="info-block">
+                        <h3>Automated Check Info</h3>
+                        <p><strong>Answer Accuracy:</strong> <span id="answer-acc"></span></p>
+                        <p><strong>Reason:</strong> <span id="answer-acc-reason"></span></p>
+                        <p><strong>Model Can Answer:</strong> <span id="can-answer"></span></p>
+                        <p><strong>URLs Valid:</strong> <span id="valid-urls"></span></p>
+                    </div>
+                    <div class="info-block">
+                        <h3>Other Model Answers & Judgments</h3>
+                        <div id="model-answers"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="save-area">
+                <button id="saveBtn">Save Labeled Data</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // DOM Elements
+        const jsonFileInput = document.getElementById('jsonFile');
+        const labelingSection = document.getElementById('labeling-section');
+        const prevBtn = document.getElementById('prevBtn');
+        const nextBtn = document.getElementById('nextBtn');
+        const saveBtn = document.getElementById('saveBtn');
+        const itemCounter = document.getElementById('item-counter');
+        const judgmentButtons = document.querySelectorAll('.judgment-btn');
+
+        // Display Elements
+        const subjectEl = document.getElementById('subject');
+        const questionEnEl = document.getElementById('question-en');
+        const answerEnEl = document.getElementById('answer-en');
+        const tracesEl = document.getElementById('traces');
+        const clueUrlsEl = document.getElementById('clue-urls');
+        const answerAccEl = document.getElementById('answer-acc');
+        const answerAccReasonEl = document.getElementById('answer-acc-reason');
+        const canAnswerEl = document.getElementById('can-answer');
+        const validUrlsEl = document.getElementById('valid-urls');
+        const modelAnswersEl = document.getElementById('model-answers');
+
+        // State
+        let jsonData = [];
+        let currentIndex = 0;
+        let originalFilename = 'labeled_data.json';
+
+        // Event Listeners
+        jsonFileInput.addEventListener('change', handleFileSelect);
+        prevBtn.addEventListener('click', showPreviousItem);
+        nextBtn.addEventListener('click', showNextItem);
+        saveBtn.addEventListener('click', saveData);
+
+        judgmentButtons.forEach(button => {
+            button.addEventListener('click', (e) => {
+                handleJudgment(e.target.dataset.judgment);
+            });
+        });
+
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            originalFilename = file.name.replace('.json', '_labeled.json');
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    jsonData = JSON.parse(e.target.result);
+                    if (Array.isArray(jsonData) && jsonData.length > 0) {
+                        currentIndex = 0;
+                        renderItem(currentIndex);
+                        labelingSection.style.display = 'block';
+                    } else {
+                        alert('Invalid JSON format or empty file.');
+                    }
+                } catch (error) {
+                    alert('Error parsing JSON file: ' + error.message);
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function renderItem(index) {
+            if (index < 0 || index >= jsonData.length) return;
+
+            const item = jsonData[index];
+
+            // Populate fields
+            subjectEl.textContent = item.问题学科 || 'N/A';
+            
+            // Show English version if available, otherwise fallback to non-English version
+            questionEnEl.textContent = (item['问题（英语）'] && item['问题（英语）'] !== 'N/A') ? item['问题（英语）'] : (item['问题'] || 'N/A');
+            answerEnEl.textContent = (item['答案（英语）'] && item['答案（英语）'] !== 'N/A') ? item['答案（英语）'] : (item['答案'] || 'N/A');
+
+            // Populate traces list
+            tracesEl.innerHTML = '';
+            (item.traces || []).forEach(trace => {
+                const li = document.createElement('li');
+                li.textContent = trace;
+                tracesEl.appendChild(li);
+            });
+
+            // Populate clue URLs list
+            clueUrlsEl.innerHTML = '';
+            (item.clue_urls || []).forEach(url => {
+                const a = document.createElement('a');
+                a.href = url;
+                a.textContent = url;
+                a.target = '_blank'; // Open in new tab
+                a.rel = 'noopener noreferrer';
+                clueUrlsEl.appendChild(a);
+                clueUrlsEl.appendChild(document.createElement('br'));
+            });
+
+            // Populate check_info
+            const checkInfo = item.check_info || {};
+            answerAccEl.textContent = checkInfo.answer_acc || 'N/A';
+            answerAccReasonEl.textContent = checkInfo.answer_acc_reason || 'N/A';
+            canAnswerEl.textContent = checkInfo.can_answer ? 'Yes' : 'No';
+            validUrlsEl.textContent = checkInfo.valid_urls ? 'Yes' : 'No';
+
+            // Populate model answers
+            modelAnswersEl.innerHTML = '';
+            (checkInfo.model_answer || []).forEach((answer, i) => {
+                const div = document.createElement('div');
+                div.className = 'model-answer-item';
+                const judge = (checkInfo.qwen_judge && checkInfo.qwen_judge[i]) ? checkInfo.qwen_judge[i] : 'N/A';
+                div.innerHTML = `<strong>Model ${i + 1} Judgment:</strong> ${judge}<div>${marked.parse(answer)}</div>`;
+                modelAnswersEl.appendChild(div);
+            });
+
+            updateControls();
+            highlightLabeledButton();
+        }
+
+        function handleJudgment(judgment) {
+            if (jsonData.length > 0) {
+                jsonData[currentIndex].human_judgment = judgment;
+                console.log(`Item ${currentIndex + 1} labeled as: ${judgment}`);
+                highlightLabeledButton();
+                showNextItem();
+            }
+        }
+
+        function showNextItem() {
+            if (currentIndex < jsonData.length - 1) {
+                currentIndex++;
+                renderItem(currentIndex);
+            }
+        }
+
+        function showPreviousItem() {
+            if (currentIndex > 0) {
+                currentIndex--;
+                renderItem(currentIndex);
+            }
+        }
+
+        function updateControls() {
+            itemCounter.textContent = `${currentIndex + 1} / ${jsonData.length}`;
+            prevBtn.disabled = currentIndex === 0;
+            nextBtn.disabled = currentIndex === jsonData.length - 1;
+        }
+
+        function highlightLabeledButton() {
+            const currentJudgment = jsonData[currentIndex].human_judgment;
+            judgmentButtons.forEach(btn => {
+                if (btn.dataset.judgment === currentJudgment) {
+                    btn.classList.add('labeled');
+                } else {
+                    btn.classList.remove('labeled');
+                }
+            });
+        }
+        
+        function saveData() {
+            if (jsonData.length === 0) {
+                alert('No data to save.');
+                return;
+            }
+            const dataStr = JSON.stringify(jsonData, null, 4); // Pretty print JSON
+            const blob = new Blob([dataStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = originalFilename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+    </script>
+</body>
+</html>
